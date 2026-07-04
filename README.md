@@ -1,23 +1,25 @@
-# 贾维斯桌面日历
+# 贾维斯 AI 桌面日历
 
-![GitHub release](https://img.shields.io/github/v/release/jilmiy/calendar?style=flat-square)
+![GitHub release](https://img.shields.io/github/v/release/jilmiy/jarvis-ai-calendar?style=flat-square)
 ![Platform](https://img.shields.io/badge/platform-Windows-2563eb?style=flat-square)
 ![Electron](https://img.shields.io/badge/built%20with-Electron-38bdf8?style=flat-square)
 ![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
 
-一个漂亮、轻量、常驻桌面的日历与待办工具。它把待办清单、日历排程、四象限、倒计时纪念日、系统提醒和 AI 助手放在同一个桌面窗口里，适合学生、上班族、项目管理和日常计划。
+会提醒、会规划、会写周报的 Windows 桌面效率助手。
+
+它把待办清单、日历排程、四象限、倒计时纪念日、系统提醒和 AI 助手放在同一个桌面窗口里，适合学生、上班族、项目管理和日常计划。
 
 如果你喜欢这个项目，欢迎给一个 Star。你的支持会让我更有动力继续优化。
 
-![贾维斯桌面日历 - 待办总览](docs/images/screenshot-todos.png)
+![贾维斯 AI 桌面日历 - 待办总览](docs/images/screenshot-todos.png)
 
 ## 下载
 
 Windows 用户可以直接下载运行版：
 
-[下载 Windows 压缩包](https://github.com/jilmiy/calendar/releases/download/v1.1.0/xiaozhi-calendar-v1.1.0-win-x64.zip)
+[下载 Windows 压缩包](https://github.com/jilmiy/jarvis-ai-calendar/releases/download/v1.1.0/jarvis-ai-calendar-v1.1.0-win-x64.zip)
 
-解压后双击 `贾维斯桌面日历.exe` 即可运行，不需要安装 Node.js。
+解压后双击 `贾维斯 AI 桌面日历.exe` 即可运行，不需要安装 Node.js。
 
 ## 为什么值得试试
 
