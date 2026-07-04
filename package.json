@@ -1,0 +1,15 @@
+{
+  "name": "xiaozhi-calendar",
+  "productName": "贾维斯桌面日历",
+  "version": "1.1.0",
+  "description": "贾维斯桌面日历 - 农历/节气/节假日/日程提醒/待办/倒计时/AI助手",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron ."
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^33.0.0"
+  }
+}

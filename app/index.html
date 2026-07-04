@@ -1,0 +1,400 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>贾维斯桌面日历</title>
+<link rel="stylesheet" href="style.css?v=21">
+</head>
+<body>
+  <div id="wallpaper"></div>
+
+  <div id="titlebar">
+    <div class="tb-left">
+      <span class="tb-logo">📅</span>
+      <span class="tb-title">贾维斯桌面日历</span>
+    </div>
+    <div class="tb-right">
+      <button id="btn-search" class="tb-btn" title="搜索待办">🔍</button>
+      <button id="btn-theme" class="tb-btn" title="切换壁纸主题">🎨</button>
+      <button id="btn-pin" class="tb-btn" title="窗口置顶">📌</button>
+      <button id="btn-settings" class="tb-btn" title="设置">⚙</button>
+      <button id="btn-min" class="tb-btn" title="最小化">─</button>
+      <button id="btn-close" class="tb-btn tb-close" title="关闭到托盘">✕</button>
+    </div>
+  </div>
+
+  <div id="layout">
+    <!-- ============ 侧边栏 ============ -->
+    <aside id="sidebar">
+      <div class="side-group">
+        <div class="side-item" data-view="news">
+          <span class="si-icon">📖</span><span class="si-name">使用说明·概览</span>
+        </div>
+      </div>
+
+      <div class="side-group">
+        <div class="side-header">
+          <span class="si-icon">📋</span><span class="si-name">清单</span>
+          <button id="btn-add-list" class="side-plus" title="新建清单">＋</button>
+        </div>
+        <div id="list-nav"></div>
+      </div>
+
+      <div class="side-group">
+        <div class="side-item" data-view="calendar">
+          <span class="si-icon">📅</span><span class="si-name">日历</span>
+        </div>
+        <div class="side-item" data-view="quadrant">
+          <span class="si-icon">🔲</span><span class="si-name">四象限</span>
+        </div>
+      </div>
+
+      <div class="side-group">
+        <div class="side-header"><span class="si-icon">🛡</span><span class="si-name">状态</span></div>
+        <div class="side-item sub" data-view="status-all">
+          <span class="si-icon">☰</span><span class="si-name">全部</span><span class="si-count" id="cnt-all">0</span>
+        </div>
+        <div class="side-item sub" data-view="status-active">
+          <span class="si-icon">○</span><span class="si-name">进行中</span><span class="si-count" id="cnt-active">0</span>
+        </div>
+        <div class="side-item sub" data-view="status-notstarted">
+          <span class="si-icon">◔</span><span class="si-name">未开始</span><span class="si-count" id="cnt-notstarted">0</span>
+        </div>
+        <div class="side-item sub" data-view="status-overdue">
+          <span class="si-icon">⚠</span><span class="si-name">已逾期</span><span class="si-count" id="cnt-overdue">0</span>
+        </div>
+        <div class="side-item sub" data-view="status-done">
+          <span class="si-icon">✓</span><span class="si-name">已完成</span><span class="si-count" id="cnt-done">0</span>
+        </div>
+        <div class="side-item sub" data-view="status-deleted">
+          <span class="si-icon">🗑</span><span class="si-name">已删除</span><span class="si-count" id="cnt-deleted">0</span>
+        </div>
+      </div>
+
+      <div class="side-group">
+        <div class="side-header"><span class="si-icon">🤖</span><span class="si-name">AI助手</span></div>
+        <div class="side-item sub" data-view="ai-report">
+          <span class="si-icon">📝</span><span class="si-name">AI写周报</span>
+        </div>
+        <div class="side-item sub" data-view="ai-chat">
+          <span class="si-icon">💬</span><span class="si-name">DeepSeek对话</span>
+        </div>
+        <div class="side-item sub" data-view="ai-todo">
+          <span class="si-icon">✨</span><span class="si-name">AI写待办</span>
+        </div>
+      </div>
+
+      <div class="side-group">
+        <div class="side-item" data-view="countdown">
+          <span class="si-icon">⏳</span><span class="si-name">倒计时·纪念日</span>
+        </div>
+      </div>
+    </aside>
+
+    <!-- ============ 主区域 ============ -->
+    <main id="content">
+
+      <!-- 待办清单视图 -->
+      <section id="view-todos" class="view">
+        <div class="view-head">
+          <div class="vh-title"><span class="vh-dot"></span><span id="todos-title">默认清单</span></div>
+          <div class="vh-actions">
+            <button id="btn-purge-all" class="glass-btn sm danger hidden" title="彻底删除全部">🗑 清空全部</button>
+            <button id="btn-sort" class="glass-btn sm" title="排序">⇅</button>
+            <button id="btn-filter-done" class="glass-btn sm" title="隐藏/显示已完成">👁</button>
+          </div>
+        </div>
+        <div id="todo-quick-row">
+          <input id="quick-input" type="text" placeholder="＋ 添加待办,回车确认(双击空白也可创建)" maxlength="80">
+        </div>
+        <div id="todos-body">
+          <ul id="todos-list"></ul>
+          <div id="todos-empty" class="empty-state hidden">
+            <div class="es-icon">✏️</div>
+            <div class="es-text">双击创建待办吧</div>
+            <button id="btn-import" class="pill-btn green">导入本地待办</button>
+            <button id="btn-ai-todo-quick" class="pill-btn purple">AI写待办</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 日历视图 -->
+      <section id="view-calendar" class="view hidden">
+        <div class="view-head">
+          <div class="vh-title">
+            <button id="cal-prev" class="glass-btn sm">‹</button>
+            <span id="cal-title-label">2026年07月</span>
+            <select id="sel-year" class="cal-sel"></select>
+            <select id="sel-month" class="cal-sel"></select>
+            <button id="cal-next" class="glass-btn sm">›</button>
+          </div>
+          <div class="vh-actions">
+            <button id="btn-today" class="glass-btn sm">今</button>
+            <div id="cal-mode" class="seg">
+              <button data-mode="day">日</button>
+              <button data-mode="week">周</button>
+              <button data-mode="month" class="active">月</button>
+            </div>
+          </div>
+        </div>
+        <div id="cal-weekdays"></div>
+        <div id="cal-grid"></div>
+        <div id="cal-day-panel" class="hidden">
+          <div id="day-info"></div>
+          <ul id="day-todos"></ul>
+          <div id="day-empty" class="empty-state small hidden">
+            <div class="es-text">当天暂无待办,双击空白创建</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 四象限视图 -->
+      <section id="view-quadrant" class="view hidden">
+        <div id="quad-grid">
+          <div class="quad" data-q="1">
+            <div class="quad-head q1">重要且紧急
+              <button class="quad-add" data-q="1">＋</button>
+            </div>
+            <ul class="quad-list" data-q="1"></ul>
+            <div class="quad-empty">暂无待办</div>
+          </div>
+          <div class="quad" data-q="2">
+            <div class="quad-head q2">重要不紧急
+              <button class="quad-add" data-q="2">＋</button>
+            </div>
+            <ul class="quad-list" data-q="2"></ul>
+            <div class="quad-empty">暂无待办</div>
+          </div>
+          <div class="quad" data-q="3">
+            <div class="quad-head q3">不重要但紧急
+              <button class="quad-add" data-q="3">＋</button>
+            </div>
+            <ul class="quad-list" data-q="3"></ul>
+            <div class="quad-empty">暂无待办</div>
+          </div>
+          <div class="quad" data-q="4">
+            <div class="quad-head q4">不重要不紧急
+              <button class="quad-add" data-q="4">＋</button>
+            </div>
+            <ul class="quad-list" data-q="4"></ul>
+            <div class="quad-empty">暂无待办</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- 倒计时视图 -->
+      <section id="view-countdown" class="view hidden">
+        <div class="view-head">
+          <div class="vh-title"><span class="vh-dot"></span>倒计时 · 纪念日</div>
+          <div class="vh-actions">
+            <button id="btn-add-countdown" class="glass-btn sm">＋ 添加</button>
+          </div>
+        </div>
+        <ul id="countdown-list"></ul>
+        <div id="countdown-empty" class="empty-state hidden">
+          <div class="es-icon">⏳</div>
+          <div class="es-text">还没有倒计时,点右上角 ＋ 添加</div>
+        </div>
+      </section>
+
+      <!-- AI 视图(周报 / 对话 / 写待办) -->
+      <section id="view-ai" class="view hidden">
+        <div class="view-head">
+          <div class="vh-title"><span class="vh-dot"></span><span id="ai-title">AI助手</span></div>
+          <div class="vh-actions">
+            <button id="btn-ai-run" class="glass-btn sm">生成</button>
+          </div>
+        </div>
+        <div id="ai-body">
+          <div id="ai-messages"></div>
+          <div id="ai-input-row">
+            <input id="ai-input" type="text" placeholder="输入内容,回车发送">
+            <button id="ai-send" class="pill-btn purple sm">发送</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 使用说明 · 概览 -->
+      <section id="view-news" class="view hidden">
+        <div class="view-head">
+          <div class="vh-title"><span class="vh-dot"></span>使用说明 · 概览</div>
+        </div>
+        <div id="news-scroll">
+          <div class="glass-card stats-card">
+            <h3>📊 任务状态分布</h3>
+            <div id="stats-body">
+              <svg id="stats-pie" viewBox="0 0 260 200" width="255" height="196"></svg>
+              <div id="stats-legend"></div>
+            </div>
+          </div>
+          <div class="glass-card stats-card">
+            <h3>🗂 各清单任务数</h3>
+            <div id="stats-lists"></div>
+          </div>
+          <div class="glass-card stats-card">
+            <h3>📖 使用说明</h3>
+            <ul class="news-list">
+              <li>📋 <b>待办</b>:顶部输入框回车快速添加,双击空白详细创建;拖拽待办到左侧清单名可移动归属</li>
+              <li>📅 <b>日历</b>:日/周/月视图切换;点日期格放大查看当天全部事项,双击快速新建;支持全天、起止时间、跨天与每天/每周/每月/每年重复</li>
+              <li>🔲 <b>四象限</b>:按重要/紧急管理,拖拽调整优先级</li>
+              <li>⏰ <b>提醒</b>:设置日期+时间并勾选提醒,到点弹出系统通知(重复事件每次都会提醒)</li>
+              <li>🤖 <b>AI助手</b>:对话可直接创建/查询/完成/删除待办、检查时段冲突,自动按内容归类清单;AI写待办自动排期;AI写周报汇总一周完成情况(需在 ⚙ 设置中配置 DeepSeek API Key)</li>
+              <li>⏳ <b>倒计时·纪念日</b>:支持公历/农历日期(农历自动转公历)、每年重复;点击条目可编辑</li>
+              <li>🎨 <b>窗口</b>:⚙ 设置中可调壁纸、背景透明度、靠边自动隐藏(拖到屏幕边缘,鼠标顶到边缘弹出);📌 置顶;关闭进托盘,托盘右键可重置窗口位置</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ============ 弹窗 ============ -->
+  <div id="modal-mask" class="hidden">
+    <!-- 待办编辑 -->
+    <div id="todo-modal" class="modal hidden">
+      <div class="modal-title" id="todo-modal-title">添加待办</div>
+      <label>内容<input id="td-title" type="text" maxlength="80" placeholder="要做什么?"></label>
+      <label>清单
+        <select id="td-list"></select>
+      </label>
+      <label>象限
+        <select id="td-quad">
+          <option value="1">重要且紧急</option>
+          <option value="2" selected>重要不紧急</option>
+          <option value="3">不重要但紧急</option>
+          <option value="4">不重要不紧急</option>
+        </select>
+      </label>
+      <label class="check-label"><input id="td-allday" type="checkbox">全天</label>
+      <label>开始<input id="td-date" type="date"><input id="td-time" type="time" class="td-time-input"></label>
+      <label>结束<input id="td-end-date" type="date"><input id="td-end-time" type="time" class="td-time-input"></label>
+      <label>重复
+        <select id="td-repeat">
+          <option value="never">永不</option>
+          <option value="daily">每天</option>
+          <option value="weekly">每周</option>
+          <option value="monthly">每月</option>
+          <option value="yearly">每年</option>
+        </select>
+      </label>
+      <label>备注<input id="td-note" type="text" maxlength="120" placeholder="可选"></label>
+      <label class="check-label"><input id="td-remind" type="checkbox">开始时提醒(需设置日期和时间)</label>
+      <div class="modal-btns">
+        <button id="td-cancel" class="ghost-btn">取消</button>
+        <button id="td-save" class="primary-btn">保存</button>
+      </div>
+    </div>
+
+    <!-- 倒计时 -->
+    <div id="countdown-modal" class="modal hidden">
+      <div class="modal-title" id="cd-modal-title">添加倒计时 / 纪念日</div>
+      <label>名称<input id="cd-title" type="text" maxlength="20" placeholder="如:高考、生日"></label>
+      <label>类型
+        <select id="cd-type">
+          <option value="solar">公历日期</option>
+          <option value="lunar">农历日期(自动转公历)</option>
+        </select>
+      </label>
+      <label id="cd-solar-row">日期<input id="cd-date" type="date"></label>
+      <label id="cd-lunar-row" class="hidden">农历
+        <select id="cd-lmonth"></select>
+        <select id="cd-lday"></select>
+      </label>
+      <label class="check-label"><input id="cd-repeat" type="checkbox">每年重复(生日、纪念日)</label>
+      <div class="modal-btns">
+        <button id="cd-cancel" class="ghost-btn">取消</button>
+        <button id="cd-save" class="primary-btn">保存</button>
+      </div>
+    </div>
+
+    <!-- 新建/编辑清单 -->
+    <div id="list-modal" class="modal hidden">
+      <div class="modal-title" id="list-modal-title">新建清单</div>
+      <label>名称<input id="list-name" type="text" maxlength="16" placeholder="清单名称"></label>
+      <label>颜色<div id="list-colors"></div></label>
+      <div class="modal-btns">
+        <button id="list-cancel" class="ghost-btn">取消</button>
+        <button id="list-save" class="primary-btn">保存</button>
+      </div>
+    </div>
+
+    <!-- 设置 -->
+    <div id="settings-modal" class="modal hidden">
+      <div class="modal-title">设置</div>
+      <label>DeepSeek API Key<input id="set-apikey" type="password" placeholder="sk-...(用于AI功能)"></label>
+      <label>壁纸
+        <select id="set-wallpaper">
+          <option value="aurora">极光</option>
+          <option value="ocean">海洋</option>
+          <option value="sunset">日落</option>
+          <option value="forest">森林</option>
+          <option value="dark">纯深色</option>
+        </select>
+      </label>
+      <label>背景透明度
+        <input id="set-opacity" type="range" min="15" max="100" step="5">
+        <span id="set-opacity-val" class="opacity-val">100%</span>
+      </label>
+      <label>窗口停靠
+        <select id="set-edge">
+          <option value="off">常驻显示</option>
+          <option value="on">靠边自动隐藏(拖到屏幕边缘)</option>
+        </select>
+      </label>
+      <label>状态颜色
+        <div id="status-colors">
+          <span class="sc-item"><input type="color" id="sc-active"><i>进行中</i></span>
+          <span class="sc-item"><input type="color" id="sc-notstarted"><i>未开始</i></span>
+          <span class="sc-item"><input type="color" id="sc-overdue"><i>已逾期</i></span>
+          <span class="sc-item"><input type="color" id="sc-done"><i>已完成</i></span>
+        </div>
+      </label>
+      <label>数据位置
+        <input id="set-datadir" type="text" readonly title="数据文件保存目录">
+        <button id="btn-choose-dir" class="ghost-btn sm-btn">选择...</button>
+      </label>
+      <label>数据备份
+        <button id="btn-export" class="ghost-btn sm-btn">导出到文件</button>
+        <button id="btn-import-data" class="ghost-btn sm-btn">从文件导入</button>
+      </label>
+      <div class="backup-tip">备份包含全部事件、清单、倒计时、AI聊天记录和设置,可在另一台电脑导入</div>
+      <div class="modal-btns">
+        <button id="set-cancel" class="ghost-btn">取消</button>
+        <button id="set-save" class="primary-btn">保存</button>
+      </div>
+    </div>
+
+    <!-- 日期详情 -->
+    <div id="day-modal" class="modal modal-wide hidden">
+      <div class="modal-title" id="day-modal-title">日期详情</div>
+      <div id="day-modal-info"></div>
+      <ul id="day-modal-todos"></ul>
+      <div id="day-modal-empty" class="empty-tip hidden">当天暂无待办</div>
+      <div class="modal-btns">
+        <button id="day-modal-add" class="ghost-btn">＋ 添加待办</button>
+        <button id="day-modal-close" class="primary-btn">关闭</button>
+      </div>
+    </div>
+
+    <!-- 搜索 -->
+    <div id="search-modal" class="modal hidden">
+      <div class="modal-title">搜索待办</div>
+      <label><input id="search-input" type="text" placeholder="输入关键词"></label>
+      <ul id="search-results"></ul>
+      <div class="modal-btns">
+        <button id="search-close" class="ghost-btn">关闭</button>
+      </div>
+    </div>
+  </div>
+
+  <input type="file" id="import-file" accept=".txt,.json" class="hidden">
+  <input type="file" id="backup-file" accept=".json" class="hidden">
+  <div id="toast" class="hidden"></div>
+
+  <script src="lunar.js?v=21"></script>
+  <script src="holidays.js?v=21"></script>
+  <script src="almanac.js?v=21"></script>
+  <script src="app.js?v=21"></script>
+</body>
+</html>
