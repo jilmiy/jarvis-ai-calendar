@@ -1,8 +1,54 @@
 # 贾维斯桌面日历
 
-一个基于 Electron 的桌面日历工具，支持农历、节气、节假日、日程提醒、待办、倒计时和 AI 助手等功能。
+![GitHub release](https://img.shields.io/github/v/release/jilmiy/calendar?style=flat-square)
+![Platform](https://img.shields.io/badge/platform-Windows-2563eb?style=flat-square)
+![Electron](https://img.shields.io/badge/built%20with-Electron-38bdf8?style=flat-square)
+![License](https://img.shields.io/badge/license-MIT-22c55e?style=flat-square)
 
-## 本地运行
+一个漂亮、轻量、常驻桌面的日历与待办工具。它把待办清单、日历排程、四象限、倒计时纪念日、系统提醒和 AI 助手放在同一个桌面窗口里，适合学生、上班族、项目管理和日常计划。
+
+如果你喜欢这个项目，欢迎给一个 Star。你的支持会让我更有动力继续优化。
+
+![贾维斯桌面日历 - 待办总览](docs/images/screenshot-todos.png)
+
+## 下载
+
+Windows 用户可以直接下载运行版：
+
+[下载 Windows 压缩包](https://github.com/jilmiy/calendar/releases/download/v1.1.0/xiaozhi-calendar-v1.1.0-win-x64.zip)
+
+解压后双击 `贾维斯桌面日历.exe` 即可运行，不需要安装 Node.js。
+
+## 为什么值得试试
+
+- 桌面常驻：透明无边框窗口，支持置顶、托盘、靠边自动隐藏。
+- 待办清单：多清单管理、状态筛选、快速添加、完成/删除/恢复。
+- 日历排程：月视图、周视图、日视图，支持农历、节气、节假日和调休标记。
+- 时间提醒：支持日期、时间、全天、重复事项和系统通知。
+- 四象限管理：按重要/紧急组织任务，适合每日优先级规划。
+- 倒计时纪念日：支持公历、农历和每年重复。
+- AI 助手：可配置 DeepSeek API Key，用于对话、写待办、生成周报。
+- 本地数据：数据保存在本机，支持自定义数据目录和备份导入导出。
+
+## 截图
+
+| 日历排程 | 四象限管理 |
+| --- | --- |
+| ![月历视图](docs/images/screenshot-calendar.png) | ![四象限视图](docs/images/screenshot-quadrant.png) |
+
+| 倒计时纪念日 | AI 助手入口 |
+| --- | --- |
+| ![倒计时纪念日](docs/images/screenshot-countdown.png) | ![AI 助手](docs/images/screenshot-ai.png) |
+
+## 适合谁
+
+- 想把待办、日程和提醒放在桌面上的人。
+- 需要农历、节气、节假日信息的中文用户。
+- 喜欢用四象限安排优先级的人。
+- 想用 AI 辅助整理待办、生成周报的人。
+- 不想把私人计划同步到云端的人。
+
+## 本地开发
 
 ```bash
 npm install
@@ -11,6 +57,14 @@ npm start
 
 Windows 用户也可以双击 `启动日历.bat` 启动开发版。
 
-## 下载运行
+## 数据与隐私
 
-请到 GitHub Releases 下载 Windows 压缩包，解压后双击 `贾维斯桌面日历.exe` 运行。
+应用数据默认保存在本机用户数据目录，可在设置中更改保存位置。AI 功能需要用户自行配置 DeepSeek API Key；未配置时，日历、待办、提醒、倒计时等核心功能仍可正常使用。
+
+## 支持项目
+
+如果这个小工具帮你把桌面和计划变清爽了，欢迎：
+
+- 点 Star 支持项目。
+- 分享给朋友或同事。
+- 在 Issue 里反馈建议和问题。
