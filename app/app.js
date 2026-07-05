@@ -61,14 +61,16 @@
   }
 
   function applyRaw(raw) {
-    if (!raw) return;
-    try { Object.assign(state.data, JSON.parse(raw)); } catch (e) { /* 损坏则用默认 */ }
+    if (!raw) return false;
+    try { Object.assign(state.data, JSON.parse(raw)); return true; }
+    catch (e) { return false; } // 损坏则用默认,并返回失败
   }
+  var saveBlocked = false; // 数据文件读取失败时置真:只写 localStorage,禁止写文件以免覆盖真实数据
   function save() {
     var json = JSON.stringify(state.data);
     localStorage.setItem(STORE_KEY, json);
-    // Electron 下同时写入本地数据文件(位置可在设置中修改)
-    if (window.electronAPI && window.electronAPI.saveData) window.electronAPI.saveData(json);
+    // Electron 下同时写入本地数据文件(位置可在设置中修改);读取失败会话中禁止写文件
+    if (!saveBlocked && window.electronAPI && window.electronAPI.saveData) window.electronAPI.saveData(json);
   }
   function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2, 7); }
 
@@ -96,6 +98,16 @@
   }
   function findList(id) {
     return state.data.lists.find(function (l) { return l.id === id; });
+  }
+
+  // 任务状态互斥分类:done / overdue / notstarted / active
+  // 全部未删除任务 = 这四类之和(与概览饼图口径一致)
+  function statusOf(t) {
+    if (t.done) return 'done';
+    var todayD = keyToDate(todayKey());
+    if (t.date && (!t.repeat || t.repeat === 'never') && keyToDate(t.endDate || t.date) < todayD) return 'overdue';
+    if (t.date && keyToDate(t.date) > todayD) return 'notstarted';
+    return 'active';
   }
 
   // ---------- 视图切换 ----------
@@ -217,15 +229,15 @@
       nav.appendChild(div);
     });
 
-    // 状态计数
+    // 状态计数(互斥分类,与概览饼图一致:全部 = 进行中 + 未开始 + 已逾期 + 已完成)
     var all = aliveTodos();
-    var todayD = keyToDate(todayKey());
+    var cnt = { active: 0, notstarted: 0, overdue: 0, done: 0 };
+    all.forEach(function (t) { cnt[statusOf(t)]++; });
     $('#cnt-all').textContent = all.length;
-    $('#cnt-undone').textContent = all.filter(function (t) { return !t.done; }).length;
-    $('#cnt-notstarted').textContent = all.filter(function (t) {
-      return !t.done && t.date && keyToDate(t.date) > todayD;
-    }).length;
-    $('#cnt-done').textContent = all.filter(function (t) { return t.done; }).length;
+    $('#cnt-active').textContent = cnt.active;
+    $('#cnt-notstarted').textContent = cnt.notstarted;
+    $('#cnt-overdue').textContent = cnt.overdue;
+    $('#cnt-done').textContent = cnt.done;
     $('#cnt-deleted').textContent = state.data.todos.filter(function (t) { return t.deleted; }).length;
   }
 
@@ -346,14 +358,10 @@
       if (f === 'deleted') items = state.data.todos.filter(function (t) { return t.deleted; });
       else {
         items = aliveTodos();
-        var tD = keyToDate(todayKey());
-        function isNotStarted(t) { return t.date && keyToDate(t.date) > tD; }
-        function isOverdue(t) { return t.date && (!t.repeat || t.repeat === 'never') && keyToDate(t.endDate || t.date) < tD; }
         if (f === 'undone') items = items.filter(function (t) { return !t.done; });
-        if (f === 'notstarted') items = items.filter(function (t) { return !t.done && isNotStarted(t); });
-        if (f === 'overdue') items = items.filter(function (t) { return !t.done && isOverdue(t); });
-        if (f === 'active') items = items.filter(function (t) { return !t.done && !isNotStarted(t) && !isOverdue(t); });
-        if (f === 'done') items = items.filter(function (t) { return t.done; });
+        else if (['active', 'notstarted', 'overdue', 'done'].indexOf(f) !== -1) {
+          items = items.filter(function (t) { return statusOf(t) === f; });
+        }
       }
     } else if (state.activeListId === '__all__') {
       title = '全部清单';
@@ -1010,9 +1018,41 @@
   var AI_TITLES = { report: 'AI写周报', chat: 'DeepSeek对话', todo: 'AI写待办' };
   var aiHistory = { report: [], chat: [], todo: [] }; // load() 后指向 state.data.aiHistory 持久化
 
+  function isSameDay(ts, ref) {
+    if (!ts) return false;
+    var a = new Date(ts), b = ref ? new Date(ref) : new Date();
+    return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  }
+  function fmtMsgTime(ts) {
+    if (!ts) return '';
+    var d = new Date(ts);
+    var hm = pad(d.getHours()) + ':' + pad(d.getMinutes());
+    return isSameDay(ts) ? hm : (d.getMonth() + 1) + '月' + d.getDate() + '日 ' + hm;
+  }
+  function todaysChat() {
+    return (aiHistory.chat || []).filter(function (m) { return isSameDay(m.ts); });
+  }
+  // 当前应显示的消息:对话默认只显示今天(点"聊天记录"看全部);周报/写待办显示全部
+  // 历史模式始终显示全部;搜索只用于"定位跳转",不过滤列表(微信式)
+  function visibleAiMsgs() {
+    var all = aiHistory[state.aiMode] || [];
+    if (state.aiMode === 'chat' && !state.aiShowAll) {
+      return all.filter(function (m) { return isSameDay(m.ts); });
+    }
+    return all;
+  }
+
   function setupAiView() {
     $('#ai-title').textContent = AI_TITLES[state.aiMode] || 'AI助手';
     $('#btn-ai-run').classList.toggle('hidden', state.aiMode !== 'report');
+    // 聊天记录按钮仅在对话模式显示;每次进入视图默认"只看今天"
+    state.aiShowAll = false;
+    state.aiSearch = '';
+    var histBtn = $('#btn-ai-history');
+    histBtn.classList.toggle('hidden', state.aiMode !== 'chat');
+    histBtn.textContent = '🕘 聊天记录';
+    $('#ai-search-row').classList.add('hidden');
+    $('#ai-search').value = '';
     $('#ai-input').placeholder = state.aiMode === 'todo'
       ? '描述你的目标,如:准备下周的产品发布会'
       : (state.aiMode === 'report' ? '可补充说明,或直接点右上角「生成」' : '输入内容,回车发送');
@@ -1021,14 +1061,108 @@
       pushAiMsg('bot', '我可以根据你最近 7 天完成的待办生成一份周报。\n点击右上角「生成」开始;也可以先在下方补充本周工作要点。');
     } else if (state.aiMode === 'todo' && !aiHistory.todo.length) {
       pushAiMsg('bot', '告诉我你的目标,我会拆解成待办并自动排好日期、避开已有日程。\n· "筹备年会"(默认从明天起排期)\n· "7月20日前完成毕业论文初稿"(按期限倒排)\n· "下周三下午交财报,帮我安排准备工作"');
-    } else if (state.aiMode === 'chat' && !aiHistory.chat.length) {
+    } else if (state.aiMode === 'chat' && !todaysChat().length) {
+      // 每天新的开始:今天还没聊过就给个欢迎语(往期记录仍保留,点"聊天记录"可查看)
       pushAiMsg('bot', '你好!我是贾维斯,可以直接帮你操作日历,试试对我说:\n· "明天下午3点提醒我去游泳"\n· "今天有什么安排?"\n· "游泳这条待办完成了"' + (state.data.apiKey ? '' : '\n(尚未配置 API Key,请点击右上角 ⚙ 设置)'));
     }
   }
 
+  function toggleAiHistory() {
+    if (state.aiMode !== 'chat') return;
+    state.aiShowAll = !state.aiShowAll;
+    var total = (aiHistory.chat || []).length;
+    $('#btn-ai-history').textContent = state.aiShowAll ? '📅 只看今天' : '🕘 聊天记录';
+    // 历史模式才显示搜索框
+    $('#ai-search-row').classList.toggle('hidden', !state.aiShowAll);
+    if (!state.aiShowAll) {
+      state.aiSearch = '';
+      $('#ai-search').value = '';
+      $('#ai-search-results').classList.add('hidden');
+      $('#ai-search-count').textContent = '';
+    }
+    renderAiMessages();
+    if (state.aiShowAll) { $('#ai-search').focus(); toast('已加载全部聊天记录(共 ' + total + ' 条)'); }
+  }
+
+  // 微信式搜索:列出匹配结果,点击定位到主列表中的该条消息并高亮
+  function renderAiSearchResults() {
+    var panel = $('#ai-search-results');
+    var countEl = $('#ai-search-count');
+    var kw = (state.aiSearch || '').toLowerCase();
+    panel.innerHTML = '';
+    if (!kw) {
+      panel.classList.add('hidden');
+      countEl.textContent = '';
+      return;
+    }
+    var all = aiHistory.chat || [];
+    var matches = [];
+    all.forEach(function (m, i) {
+      if ((m.text || '').toLowerCase().indexOf(kw) !== -1) matches.push({ m: m, i: i });
+    });
+    countEl.textContent = '找到 ' + matches.length + ' 条';
+    if (!matches.length) {
+      var none = document.createElement('div');
+      none.className = 'asr-none';
+      none.textContent = '没有匹配「' + state.aiSearch + '」的聊天记录';
+      panel.appendChild(none);
+      panel.classList.remove('hidden');
+      return;
+    }
+    matches.forEach(function (mt) {
+      var item = document.createElement('div');
+      item.className = 'asr-item';
+      var who = document.createElement('span');
+      who.className = 'asr-who ' + (mt.m.role === 'user' ? 'user' : 'bot');
+      who.textContent = mt.m.role === 'user' ? '我' : '贾维斯';
+      var snip = document.createElement('span');
+      snip.className = 'asr-snip';
+      snip.appendChild(highlightSnippet(mt.m.text, kw));
+      var time = document.createElement('span');
+      time.className = 'asr-time';
+      time.textContent = fmtMsgTime(mt.m.ts);
+      item.appendChild(who); item.appendChild(snip); item.appendChild(time);
+      item.addEventListener('click', function () { scrollToAiMsg(mt.i); });
+      panel.appendChild(item);
+    });
+    panel.classList.remove('hidden');
+  }
+
+  // 生成带关键词高亮的片段(截取关键词附近文本)
+  function highlightSnippet(text, kw) {
+    text = text || '';
+    var lower = text.toLowerCase();
+    var pos = lower.indexOf(kw);
+    var frag = document.createDocumentFragment();
+    if (pos === -1) { frag.appendChild(document.createTextNode(text.slice(0, 40))); return frag; }
+    var start = Math.max(0, pos - 12);
+    var pre = (start > 0 ? '…' : '') + text.slice(start, pos);
+    var mid = text.slice(pos, pos + kw.length);
+    var post = text.slice(pos + kw.length, pos + kw.length + 20);
+    frag.appendChild(document.createTextNode(pre));
+    var mark = document.createElement('mark');
+    mark.textContent = mid;
+    frag.appendChild(mark);
+    frag.appendChild(document.createTextNode(post + (pos + kw.length + 20 < text.length ? '…' : '')));
+    return frag;
+  }
+
+  // 定位到主列表中第 idx 条消息:滚动到中间并短暂高亮
+  function scrollToAiMsg(idx) {
+    var wrap = document.querySelector('#ai-messages .ai-msg-wrap[data-idx="' + idx + '"]');
+    if (!wrap) return;
+    $('#ai-search-results').classList.add('hidden');
+    wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    var bubble = wrap.querySelector('.ai-msg');
+    if (bubble) {
+      bubble.classList.add('ai-msg-flash');
+      setTimeout(function () { bubble.classList.remove('ai-msg-flash'); }, 1600);
+    }
+  }
+
   function pushAiMsg(role, text, todoLines) {
-    aiHistory[state.aiMode].push({ role: role, text: text, todoLines: todoLines || null });
-    if (aiHistory[state.aiMode].length > 200) aiHistory[state.aiMode].shift();
+    aiHistory[state.aiMode].push({ role: role, text: text, todoLines: todoLines || null, ts: Date.now() });
+    if (aiHistory[state.aiMode].length > 500) aiHistory[state.aiMode].shift();
     save();
     renderAiMessages();
   }
@@ -1036,7 +1170,24 @@
   function renderAiMessages() {
     var box = $('#ai-messages');
     box.innerHTML = '';
-    (aiHistory[state.aiMode] || []).forEach(function (m) {
+    var msgs = visibleAiMsgs();
+    var lastDayLabel = null;
+    msgs.forEach(function (m, i) {
+      // 查看全部历史时,按日期插入分隔条
+      if (state.aiMode === 'chat' && state.aiShowAll && m.ts) {
+        var dl = new Date(m.ts);
+        var label = dl.getFullYear() + '年' + (dl.getMonth() + 1) + '月' + dl.getDate() + '日';
+        if (label !== lastDayLabel) {
+          lastDayLabel = label;
+          var sep = document.createElement('div');
+          sep.className = 'ai-day-sep';
+          sep.textContent = label;
+          box.appendChild(sep);
+        }
+      }
+      var wrap = document.createElement('div');
+      wrap.className = 'ai-msg-wrap ' + (m.role === 'user' ? 'user' : 'bot');
+      wrap.dataset.idx = i; // 历史模式下 i 即 aiHistory.chat 的下标,供搜索定位
       var div = document.createElement('div');
       div.className = 'ai-msg ' + (m.role === 'user' ? 'user' : 'bot');
       div.textContent = m.text;
@@ -1060,7 +1211,14 @@
         act.appendChild(btn);
         div.appendChild(act);
       }
-      box.appendChild(div);
+      wrap.appendChild(div);
+      if (m.ts) {
+        var time = document.createElement('div');
+        time.className = 'ai-msg-time';
+        time.textContent = fmtMsgTime(m.ts);
+        wrap.appendChild(time);
+      }
+      box.appendChild(wrap);
     });
     box.scrollTop = box.scrollHeight;
   }
@@ -1322,7 +1480,7 @@
     var now = new Date();
     var lunar = Lunar.solar2lunar(now);
     var weekCn = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
-    return '你是"贾维斯桌面日历"的内置中文助手,名叫贾维斯。今天是' +
+    return '你是"贾维斯 AI 桌面日历"的内置中文助手,名叫贾维斯。今天是' +
       now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 星期' + weekCn +
       (lunar ? ',农历' + lunar.monthCn + lunar.dayCn : '') +
       ',当前时间' + pad(now.getHours()) + ':' + pad(now.getMinutes()) + '。\n' +
@@ -1335,7 +1493,7 @@
   function todoSysPrompt() {
     var now = new Date();
     var weekCn = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()];
-    return '你是"贾维斯桌面日历"的任务规划助手。今天是' +
+    return '你是"贾维斯 AI 桌面日历"的任务规划助手。今天是' +
       now.getFullYear() + '年' + (now.getMonth() + 1) + '月' + now.getDate() + '日 星期' + weekCn + '。\n' +
       '用户现有清单:' + state.data.lists.map(function (l) { return '「' + l.name + '」'; }).join('、') + '。\n' +
       '把用户的目标拆解为5-8条具体、可执行的待办,并调用add_todo逐条实际创建(用list参数选择内容最匹配的清单)。规则:\n' +
@@ -1660,26 +1818,16 @@
 
   // ---------- 概览统计(饼图 + 各清单任务数) ----------
   function renderStats() {
-    var today = keyToDate(todayKey());
     var alive = aliveTodos();
-    var done = alive.filter(function (t) { return t.done; });
-    var undone = alive.filter(function (t) { return !t.done; });
-    var overdue = undone.filter(function (t) {
-      if (!t.date || (t.repeat && t.repeat !== 'never')) return false;
-      return keyToDate(t.endDate || t.date) < today;
-    });
-    // 未开始:开始日期在未来的任务
-    var notStarted = undone.filter(function (t) {
-      return t.date && keyToDate(t.date) > today;
-    });
-    var active = undone.length - overdue.length - notStarted.length;
+    var tally = { active: 0, notstarted: 0, overdue: 0, done: 0 };
+    alive.forEach(function (t) { tally[statusOf(t)]++; });
 
     var SC = state.data.statusColors;
     var cats = [
-      { name: '进行中', count: active, color: SC.active, view: 'status-active' },
-      { name: '未开始', count: notStarted.length, color: SC.notstarted, view: 'status-notstarted' },
-      { name: '已逾期', count: overdue.length, color: SC.overdue, view: 'status-overdue' },
-      { name: '已完成', count: done.length, color: SC.done, view: 'status-done' }
+      { name: '进行中', count: tally.active, color: SC.active, view: 'status-active' },
+      { name: '未开始', count: tally.notstarted, color: SC.notstarted, view: 'status-notstarted' },
+      { name: '已逾期', count: tally.overdue, color: SC.overdue, view: 'status-overdue' },
+      { name: '已完成', count: tally.done, color: SC.done, view: 'status-done' }
     ];
     function gotoStatus(view) {
       switchView(view);
@@ -1821,12 +1969,7 @@
     ];
     function segCounts(items) {
       var seg = { active: 0, notstarted: 0, overdue: 0, done: 0 };
-      items.forEach(function (t) {
-        if (t.done) seg.done++;
-        else if (t.date && (!t.repeat || t.repeat === 'never') && keyToDate(t.endDate || t.date) < today) seg.overdue++;
-        else if (t.date && keyToDate(t.date) > today) seg.notstarted++;
-        else seg.active++;
-      });
+      items.forEach(function (t) { seg[statusOf(t)]++; });
       return seg;
     }
 
@@ -2036,6 +2179,17 @@
       if (e.key === 'Enter') aiSend();
     });
     $('#btn-ai-run').addEventListener('click', function () { aiGenerateReport(''); });
+    $('#btn-ai-history').addEventListener('click', toggleAiHistory);
+    $('#ai-search').addEventListener('input', function () {
+      state.aiSearch = this.value.trim();
+      renderAiSearchResults();
+    });
+    $('#ai-search').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') {
+        var first = $('#ai-search-results .asr-item');
+        if (first) first.click();
+      }
+    });
 
     // 设置
     $('#btn-settings').addEventListener('click', function () {
@@ -2140,17 +2294,43 @@
 
   // ---------- 启动 ----------
   function boot() {
-    if (window.electronAPI && window.electronAPI.loadData) {
-      window.electronAPI.loadData().then(function (content) {
-        if (content) applyRaw(content);
-        else applyRaw(localStorage.getItem(STORE_KEY)); // 首次:从旧的 localStorage 迁移
-        init();
-        save(); // 确保数据文件生成
-      });
-    } else {
+    if (!(window.electronAPI && window.electronAPI.loadData)) {
+      // 浏览器模式:只用 localStorage
       applyRaw(localStorage.getItem(STORE_KEY));
       init();
+      return;
     }
+    window.electronAPI.loadData().then(function (res) {
+      res = res || {};
+      if (res.content) {
+        // 文件里有数据:正常加载,无需回写。若解析失败(文件损坏),禁写以免覆盖
+        if (!applyRaw(res.content)) {
+          saveBlocked = true;
+          applyRaw(localStorage.getItem(STORE_KEY)); // 尝试用 localStorage 副本兜底
+          toast('⚠ 数据文件损坏,已尝试用本地缓存恢复;本次改动暂不写入文件');
+        }
+        init();
+      } else if (res.missing) {
+        // 文件不存在:首次运行,从旧的 localStorage 迁移并创建文件
+        var ls = localStorage.getItem(STORE_KEY);
+        if (ls) applyRaw(ls);
+        init();
+        save(); // 仅此情形写文件(迁移 / 新建)
+      } else {
+        // 读取失败(res.error):绝不覆盖文件!用 localStorage 临时撑起会话,禁止写文件
+        saveBlocked = true;
+        var ls2 = localStorage.getItem(STORE_KEY);
+        if (ls2) applyRaw(ls2);
+        init();
+        toast('⚠ 数据文件读取失败,本次改动暂不写入文件(已保留原文件)。请重启或检查设置里的数据位置');
+      }
+    }).catch(function () {
+      // invoke 本身异常:同样绝不覆盖文件
+      saveBlocked = true;
+      var ls = localStorage.getItem(STORE_KEY);
+      if (ls) applyRaw(ls);
+      init();
+    });
   }
 
   function init() {

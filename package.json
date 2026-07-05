@@ -1,7 +1,7 @@
 {
   "name": "jarvis-ai-calendar",
   "productName": "贾维斯 AI 桌面日历",
-  "version": "1.1.0",
+  "version": "1.1.1",
   "description": "贾维斯 AI 桌面日历 - 会提醒、会规划、会写周报的 Windows 桌面效率助手",
   "main": "main.js",
   "scripts": {

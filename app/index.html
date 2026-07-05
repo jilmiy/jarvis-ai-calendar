@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>贾维斯桌面日历</title>
-<link rel="stylesheet" href="style.css?v=21">
+<title>贾维斯 AI 桌面日历</title>
+<link rel="stylesheet" href="style.css?v=25">
 </head>
 <body>
   <div id="wallpaper"></div>
@@ -12,7 +12,7 @@
   <div id="titlebar">
     <div class="tb-left">
       <span class="tb-logo">📅</span>
-      <span class="tb-title">贾维斯桌面日历</span>
+      <span class="tb-title">贾维斯 AI 桌面日历</span>
     </div>
     <div class="tb-right">
       <button id="btn-search" class="tb-btn" title="搜索待办">🔍</button>
@@ -203,10 +203,18 @@
         <div class="view-head">
           <div class="vh-title"><span class="vh-dot"></span><span id="ai-title">AI助手</span></div>
           <div class="vh-actions">
+            <button id="btn-ai-history" class="glass-btn sm hidden" title="加载往期聊天记录">🕘 聊天记录</button>
             <button id="btn-ai-run" class="glass-btn sm">生成</button>
           </div>
         </div>
         <div id="ai-body">
+          <div id="ai-search-row" class="hidden">
+            <div id="ai-search-box">
+              <input id="ai-search" type="text" placeholder="🔍 搜索聊天记录,点结果跳转">
+              <span id="ai-search-count"></span>
+              <div id="ai-search-results" class="hidden"></div>
+            </div>
+          </div>
           <div id="ai-messages"></div>
           <div id="ai-input-row">
             <input id="ai-input" type="text" placeholder="输入内容,回车发送">
@@ -392,9 +400,9 @@
   <input type="file" id="backup-file" accept=".json" class="hidden">
   <div id="toast" class="hidden"></div>
 
-  <script src="lunar.js?v=21"></script>
-  <script src="holidays.js?v=21"></script>
-  <script src="almanac.js?v=21"></script>
-  <script src="app.js?v=21"></script>
+  <script src="lunar.js?v=25"></script>
+  <script src="holidays.js?v=25"></script>
+  <script src="almanac.js?v=25"></script>
+  <script src="app.js?v=25"></script>
 </body>
 </html>

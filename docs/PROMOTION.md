@@ -61,7 +61,7 @@
 适合每天需要安排任务、提醒事项、复盘进度的人。项目开源，正在冲 50 个 Star，喜欢的话欢迎支持一下。
 
 GitHub： https://github.com/jilmiy/jarvis-ai-calendar  
-下载： https://github.com/jilmiy/jarvis-ai-calendar/releases/tag/v1.1.0
+下载： https://github.com/jilmiy/jarvis-ai-calendar/releases/tag/v1.1.1
 
 ## 中文短视频脚本
 
@@ -88,7 +88,7 @@ I built Jarvis AI Desktop Calendar, a lightweight Windows productivity app that 
 It runs locally, supports Windows notifications, and can use a DeepSeek API key to help generate todos, chat about your schedule, and write weekly reports.
 
 GitHub: https://github.com/jilmiy/jarvis-ai-calendar  
-Download: https://github.com/jilmiy/jarvis-ai-calendar/releases/tag/v1.1.0
+Download: https://github.com/jilmiy/jarvis-ai-calendar/releases/tag/v1.1.1
 
 If you like desktop productivity tools, a Star would mean a lot.
 

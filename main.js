@@ -16,6 +16,7 @@ let quitting = false;
 // ---- 靠边隐藏状态 ----
 let edgeHide = false;   // 是否开启靠边自动隐藏
 let docked = null;      // 'top' | 'left' | 'right' | null
+let dockDisplayId = null; // 贴靠时锁定的显示器 id,隐藏/弹出都用它计算(多屏一致)
 let edgeHidden = false; // 当前是否已缩到边缘
 let pinned = false;     // 用户置顶状态
 let moveTimer = null;
@@ -26,7 +27,8 @@ const PEEK = 4;         // 隐藏后留在屏幕内的像素
 
 // ---- 前台窗口监视(判断停靠条带是否被其他软件覆盖) ----
 let fgWatcher = null;
-let fgInfo = null;      // { hwnd: BigInt, cls: string, rect: {x,y,width,height} DIP }
+let fgInfo = null;      // { hwnd: BigInt, cls: string } 当前前台窗口
+let mouseDown = false;  // 鼠标左键是否按下(用于判断是否仍在拖动)
 let myHwnd = null;
 const DESKTOP_CLASSES = ['Progman', 'WorkerW', 'Shell_TrayWnd', 'Shell_SecondaryTrayWnd'];
 
@@ -60,40 +62,69 @@ function createWindow() {
     }
   });
 
-  // 拖动结束后检测是否停靠到屏幕边缘
+  // 拖动结束后检测是否停靠到屏幕边缘(短防抖 + 松手判定,避免拖动中途误处理)
   win.on('move', () => {
     if (ignoreMove) return;
     clearTimeout(moveTimer);
-    moveTimer = setTimeout(onMoved, 350);
+    moveTimer = setTimeout(onMoved, 140);
   });
 
   // 失去焦点后收起已停靠的窗口
   win.on('blur', () => {
     if (edgeHide && docked && !edgeHidden) {
       setTimeout(() => {
-        if (win && edgeHide && docked && !edgeHidden && !win.isFocused()) hideToEdge();
+        if (win && !win.isDestroyed() && edgeHide && docked && !edgeHidden && !win.isFocused()) hideToEdge();
       }, 250);
     }
   });
 }
 
+// 贴靠所属显示器:已贴靠时用锁定的那个(多屏下隐藏/弹出保持一致),否则用窗口所在显示器
+function dockDisplay() {
+  if (dockDisplayId != null) {
+    const d = screen.getAllDisplays().find(x => x.id === dockDisplayId);
+    if (d) return d;
+  }
+  return screen.getDisplayMatching(win.getBounds());
+}
 function workAreaOf() {
-  return screen.getDisplayMatching(win.getBounds()).workArea;
+  return dockDisplay().workArea;
 }
 
-function detectEdge() {
+function displayContains(d, x, y) {
+  const b = d.bounds;
+  return x >= b.x && x < b.x + b.width && y >= b.y && y < b.y + b.height;
+}
+// 该显示器在 side 方向外侧是否还有相邻显示器(有则是两屏之间的内侧边界,不应贴靠)
+function hasAdjacentDisplay(disp, side) {
+  const b = disp.bounds;
+  const midX = b.x + b.width / 2, midY = b.y + b.height / 2;
+  let px, py;
+  if (side === 'right') { px = b.x + b.width + 8; py = midY; }
+  else if (side === 'left') { px = b.x - 8; py = midY; }
+  else if (side === 'top') { px = midX; py = b.y - 8; }
+  else return false;
+  return screen.getAllDisplays().some(d => d.id !== disp.id && displayContains(d, px, py));
+}
+
+const DOCK_SNAP = 22; // 贴边判定阈值:窗口边缘距屏幕边缘 22px 内即视为贴边(放宽,避免拖近却不触发)
+// 在指定显示器上检测贴靠边;只认外侧边界(两屏之间的内侧边界不贴靠,避免跳屏)
+function detectEdgeOn(disp) {
   const b = win.getBounds();
-  const wa = workAreaOf();
-  if (b.y <= wa.y + 3) return 'top';
-  if (b.x <= wa.x + 3) return 'left';
-  if (b.x + b.width >= wa.x + wa.width - 3) return 'right';
+  const wa = disp.workArea;
+  const c = screen.getCursorScreenPoint();
+  const CE = 3; // 光标顶到屏幕边缘也算(用力拖到边角时更可靠)
+  if ((b.y <= wa.y + DOCK_SNAP || c.y <= wa.y + CE) && !hasAdjacentDisplay(disp, 'top')) return 'top';
+  if ((b.x <= wa.x + DOCK_SNAP || c.x <= wa.x + CE) && !hasAdjacentDisplay(disp, 'left')) return 'left';
+  if ((b.x + b.width >= wa.x + wa.width - DOCK_SNAP || c.x >= wa.x + wa.width - CE) && !hasAdjacentDisplay(disp, 'right')) return 'right';
   return null;
 }
 
 // 拖动后把窗口限制在屏幕内:水平至少留 MIN_W 可见,标题栏不能跑出顶部/底部
+// 用窗口当前所在显示器(不受贴靠锁定影响),多屏下允许跨屏移动
 function clampToScreen() {
   const b = win.getBounds();
-  const wa = workAreaOf();
+  const wa = screen.getDisplayMatching(b).workArea;
   const MIN_W = 120; // 水平方向至少留在屏幕内的宽度
   const MIN_H = 60;  // 底部方向至少留出的高度(保证标题栏可抓)
   let x = b.x, y = b.y;
@@ -105,12 +136,21 @@ function clampToScreen() {
 }
 
 function onMoved() {
-  if (!win || edgeHidden) return;
+  if (!win || win.isDestroyed() || edgeHidden) return;
+  // 仍按住鼠标(还在拖动)时不处理,推迟到松手后再判定,避免中途把窗口拽回打断拖动
+  if (edgeHide && mouseDown) {
+    clearTimeout(moveTimer);
+    moveTimer = setTimeout(onMoved, 150);
+    return;
+  }
   clampToScreen();
   if (!edgeHide) return;
-  docked = detectEdge();
+  // 用光标所在显示器判定贴靠(拖动意图更准),只贴外侧边界
+  const disp = screen.getDisplayNearestPoint(screen.getCursorScreenPoint());
+  docked = detectEdgeOn(disp);
+  dockDisplayId = docked ? disp.id : null;
   if (docked) {
-    // 停靠瞬间就贴齐边线并整体收进屏幕,隐藏条带与弹出位置都对齐
+    // 松手后停靠:贴齐边线并整体收进屏幕,隐藏条带与弹出位置都对齐
     const p = dockAlignedPos();
     setPos(p.x, p.y);
   }
@@ -132,6 +172,9 @@ function hideToEdge() {
   else if (docked === 'right') setPos(wa.x + wa.width - PEEK, b.y);
   edgeHidden = true;
   edgeDwell = 0;
+  // 隐藏后:取消置顶 + 主动压到 z 轴最底层,露出的边条位于所有其他软件底下,不再遮挡/误触
+  win.setAlwaysOnTop(false);
+  sendToBottom();
 }
 
 // 停靠边对齐屏幕边线,另一方向整体收进屏幕内(贴角落时不再切掉内容)
@@ -152,12 +195,17 @@ function dockAlignedPos() {
   return { x: x, y: y };
 }
 
-function showFromEdge() {
+function showFromEdge(focusIt) {
   if (!edgeHidden || !docked) return;
+  // 弹出时升到最前并置顶,盖过其他软件
+  win.setAlwaysOnTop(true);
+  win.moveTop();
   const p = dockAlignedPos();
   setPos(p.x, p.y);
   edgeHidden = false;
   edgeDwell = 0;
+  // focusIt 为真时才抢焦点(托盘/通知点开);悬停弹出不抢焦点,便于鼠标移走自动收起
+  if (focusIt) { win.show(); win.focus(); }
 }
 
 function cursorInWindow(margin) {
@@ -166,16 +214,6 @@ function cursorInWindow(margin) {
   const b = win.getBounds();
   return c.x >= b.x - m && c.x <= b.x + b.width + m &&
          c.y >= b.y - m && c.y <= b.y + b.height + m;
-}
-
-// 隐藏后留在屏幕内的条带区域
-function stripRect() {
-  const b = win.getBounds();
-  const wa = workAreaOf();
-  if (docked === 'top') return { x: b.x, y: wa.y, width: b.width, height: PEEK };
-  if (docked === 'left') return { x: wa.x, y: b.y, width: PEEK, height: b.height };
-  if (docked === 'right') return { x: wa.x + wa.width - PEEK, y: b.y, width: PEEK, height: b.height };
-  return null;
 }
 
 // 鼠标是否顶到了停靠边缘(2px)且在条带纵/横向范围内
@@ -190,43 +228,87 @@ function inRevealZone() {
   return false;
 }
 
-function rectsIntersect(a, b) {
-  return a.x < b.x + b.width && a.x + a.width > b.x &&
-         a.y < b.y + b.height && a.y + a.height > b.y;
-}
-
-// 停靠条带是否被其他软件的前台窗口覆盖
-function stripCovered() {
-  if (!fgInfo) return false;
-  if (myHwnd !== null && fgInfo.hwnd === myHwnd) return false;    // 前台是日历自己
-  if (DESKTOP_CLASSES.indexOf(fgInfo.cls) !== -1) return false;   // 前台是桌面/任务栏
-  const strip = stripRect();
-  if (!strip) return false;
-  return rectsIntersect(fgInfo.rect, strip);
+// 前台是否为"其他应用"(既不是日历自己,也不是桌面/任务栏)
+// 用类名+句柄判断,比像素级矩形相交稳健:不受全屏应用是否精确覆盖条带影响
+function foregroundIsOther() {
+  if (!fgInfo) return false;                                     // 监视未就绪:按"非其他"处理
+  if (myHwnd !== null && fgInfo.hwnd === myHwnd) return false;   // 前台是日历自己
+  if (DESKTOP_CLASSES.indexOf(fgInfo.cls) !== -1) return false;  // 前台是桌面/任务栏
+  return true;                                                   // 其他真实应用
 }
 
 function pollEdge() {
-  if (!win || !edgeHide || !docked || !win.isVisible()) return;
+  if (!win || win.isDestroyed() || !edgeHide || !docked || !win.isVisible()) return;
+  const overWindow = cursorInWindow(2);
   if (edgeHidden) {
-    // 需要:鼠标顶到边缘 + 停留约0.5秒 + 条带未被其他软件覆盖
-    if (inRevealZone() && !stripCovered()) {
+    // 弹出条件:鼠标顶到停靠边缘 + 停留约0.5秒 + 当前不在使用其他应用
+    // (只在桌面/日历自身处于前台时才弹出,避免全屏应用下误弹)
+    // 弹出后不抢焦点:保持"未聚焦",这样鼠标一移走就能自动收起
+    if (inRevealZone() && !foregroundIsOther()) {
       edgeDwell++;
-      if (edgeDwell >= 2) showFromEdge();
+      if (edgeDwell >= 2) showFromEdge(false);
     } else {
       edgeDwell = 0;
     }
   } else {
-    if (!cursorInWindow(2) && !win.isFocused()) hideToEdge();
+    // 收起条件:
+    // 1) 前台切到其他应用(点击其他软件 / 全屏应用启动)→ 立即收起,即使鼠标恰在日历上
+    //    (仅悬停不会改变前台窗口,所以不会把正要点的日历收掉)
+    // 2) 兜底:日历未聚焦且鼠标已离开 → 收起
+    if (foregroundIsOther() || (!overWindow && !win.isFocused())) hideToEdge();
   }
 }
 
 function startPoll() {
   if (!pollTimer) pollTimer = setInterval(pollEdge, 250);
   startFgWatcher();
+  startZHelper();
 }
 function stopPoll() {
   if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
   stopFgWatcher();
+  stopZHelper();
+}
+
+// ---- 层级助手进程:阻塞读 stdin,每收到一个 hwnd 就把它压到 z 轴最底层(HWND_BOTTOM) ----
+let zHelper = null;
+function startZHelper() {
+  if (zHelper) return;
+  const psScript = `
+Add-Type @"
+using System;
+using System.Runtime.InteropServices;
+public class ZO {
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr h, IntPtr after, int X, int Y, int cx, int cy, uint flags);
+}
+"@
+$BOTTOM = [IntPtr]1
+$FLAGS = [uint32](0x0001 -bor 0x0002 -bor 0x0010)  # SWP_NOSIZE|SWP_NOMOVE|SWP_NOACTIVATE
+while ($true) {
+  $line = [Console]::In.ReadLine()
+  if ($line -eq $null) { break }
+  $line = $line.Trim()
+  if ($line -ne '') {
+    try { [ZO]::SetWindowPos([IntPtr][int64]$line, $BOTTOM, 0, 0, 0, 0, $FLAGS) | Out-Null } catch {}
+  }
+}
+`;
+  try {
+    const b64 = Buffer.from(psScript, 'utf16le').toString('base64');
+    zHelper = spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-EncodedCommand', b64], {
+      windowsHide: true, stdio: ['pipe', 'ignore', 'ignore']
+    });
+    zHelper.on('exit', () => { zHelper = null; });
+  } catch (e) { zHelper = null; }
+}
+function stopZHelper() {
+  if (zHelper) { try { zHelper.kill(); } catch (e) {} zHelper = null; }
+}
+// 把日历窗口压到所有窗口最底层
+function sendToBottom() {
+  if (zHelper && zHelper.stdin.writable && myHwnd !== null) {
+    try { zHelper.stdin.write(myHwnd.toString() + '\n'); } catch (e) {}
+  }
 }
 
 // ---- 前台窗口监视进程:每400ms输出 "hwnd|class|l|t|r|b"(物理像素) ----
@@ -239,21 +321,19 @@ using System.Runtime.InteropServices;
 using System.Text;
 public class FG {
   [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
-  [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr h, out RECT r);
   [DllImport("user32.dll")] public static extern int GetClassName(IntPtr h, StringBuilder s, int n);
-  public struct RECT { public int Left; public int Top; public int Right; public int Bottom; }
+  [DllImport("user32.dll")] public static extern short GetAsyncKeyState(int vKey);
 }
 "@
 while ($true) {
   try {
     $h = [FG]::GetForegroundWindow()
-    $r = New-Object FG+RECT
-    [FG]::GetWindowRect($h, [ref]$r) | Out-Null
     $sb = New-Object System.Text.StringBuilder 256
     [FG]::GetClassName($h, $sb, 256) | Out-Null
-    Write-Output ("{0}|{1}|{2}|{3}|{4}|{5}" -f [int64]$h, $sb.ToString(), $r.Left, $r.Top, $r.Right, $r.Bottom)
+    $down = if ((([FG]::GetAsyncKeyState(1)) -band 0x8000) -ne 0) { 1 } else { 0 }
+    Write-Output ("{0}|{1}|{2}" -f [int64]$h, $sb.ToString(), $down)
   } catch {}
-  Start-Sleep -Milliseconds 400
+  Start-Sleep -Milliseconds 250
 }
 `;
   try {
@@ -265,15 +345,13 @@ while ($true) {
     const rl = readline.createInterface({ input: fgWatcher.stdout });
     rl.on('line', (line) => {
       const p = line.split('|');
-      if (p.length !== 6) return;
+      if (p.length !== 3) return;
       try {
-        const phys = { x: +p[2], y: +p[3], width: +p[4] - +p[2], height: +p[5] - +p[3] };
-        let dip = phys;
-        if (screen.screenToDipRect) dip = screen.screenToDipRect(win, phys);
-        fgInfo = { hwnd: BigInt.asUintN(64, BigInt(p[0])), cls: p[1], rect: dip };
+        fgInfo = { hwnd: BigInt.asUintN(64, BigInt(p[0])), cls: p[1] };
+        mouseDown = p[2] === '1';
       } catch (e) { /* 忽略解析失败的行 */ }
     });
-    fgWatcher.on('exit', () => { fgWatcher = null; fgInfo = null; });
+    fgWatcher.on('exit', () => { fgWatcher = null; fgInfo = null; mouseDown = false; });
   } catch (e) {
     fgWatcher = null; // 监视进程启动失败时退化为不做覆盖检测
   }
@@ -281,6 +359,7 @@ while ($true) {
 function stopFgWatcher() {
   if (fgWatcher) { try { fgWatcher.kill(); } catch (e) {} fgWatcher = null; }
   fgInfo = null;
+  mouseDown = false;
 }
 
 function createTray() {
@@ -288,7 +367,7 @@ function createTray() {
   let icon = nativeImage.createFromPath(iconPath);
   if (icon.isEmpty()) icon = nativeImage.createEmpty();
   tray = new Tray(icon);
-  tray.setToolTip('贾维斯桌面日历');
+  tray.setToolTip('贾维斯 AI 桌面日历');
   const menu = Menu.buildFromTemplate([
     { label: '显示日历', click: () => { if (edgeHidden) showFromEdge(); win.show(); win.focus(); } },
     {
@@ -297,6 +376,7 @@ function createTray() {
         const b = win.getBounds();
         edgeHidden = false;
         docked = null;
+        dockDisplayId = null;
         win.setAlwaysOnTop(pinned);
         setPos(wa.x + Math.round((wa.width - b.width) / 2), wa.y + Math.round((wa.height - b.height) / 2));
         win.show();
@@ -332,7 +412,9 @@ app.on('window-all-closed', () => {
 });
 app.on('before-quit', () => {
   quitting = true;
-  stopFgWatcher();
+  // 停掉轮询与后台助手进程,避免定时器在窗口销毁后仍访问 win 而报错
+  stopPoll();
+  clearTimeout(moveTimer);
 });
 
 // ---------- IPC ----------
@@ -340,18 +422,23 @@ ipcMain.on('win-minimize', () => win && win.minimize());
 ipcMain.on('win-hide', () => win && win.hide());
 ipcMain.on('win-pin', (_e, flag) => {
   pinned = !!flag;
-  if (win) win.setAlwaysOnTop(docked ? true : pinned);
+  // 已隐藏到边缘时保持在底层,不因置顶切换把边条拉回最前
+  if (win) win.setAlwaysOnTop(edgeHidden ? false : (docked ? true : pinned));
 });
 ipcMain.on('edge-hide', (_e, flag) => {
   edgeHide = !!flag;
   if (!win) return;
   if (edgeHide) {
-    docked = detectEdge();
+    // 开启时若窗口已在某屏外侧边缘,直接进入贴靠(锁定该显示器)
+    const disp = screen.getDisplayMatching(win.getBounds());
+    docked = detectEdgeOn(disp);
+    dockDisplayId = docked ? disp.id : null;
     if (docked) win.setAlwaysOnTop(true);
     startPoll();
   } else {
     if (edgeHidden) showFromEdge();
     docked = null;
+    dockDisplayId = null;
     edgeHidden = false;
     stopPoll();
     win.setAlwaysOnTop(pinned);
@@ -373,12 +460,23 @@ loadStorageConfig();
 function dataFilePath() { return path.join(dataDir, DATA_FILENAME); }
 
 ipcMain.handle('load-data', () => {
-  try { return fs.readFileSync(dataFilePath(), 'utf-8'); }
-  catch (e) { return null; }
+  const fp = dataFilePath();
+  try {
+    if (!fs.existsSync(fp)) return { missing: true };   // 文件不存在:首次运行
+    return { ok: true, content: fs.readFileSync(fp, 'utf-8') };
+  } catch (e) {
+    return { error: String(e.message || e) };           // 读取失败:绝不能当成"空数据"
+  }
 });
 ipcMain.on('save-data', (_e, content) => {
-  try { fs.writeFileSync(dataFilePath(), content, 'utf-8'); }
-  catch (e) { /* 写入失败时 localStorage 仍有副本 */ }
+  // 原子写入:先写临时文件再重命名,避免进程被杀在写一半时留下空/损坏文件
+  try {
+    if (!content || content.length < 2) return;          // 拒绝写入空内容,防止误清空
+    const fp = dataFilePath();
+    const tmp = fp + '.tmp';
+    fs.writeFileSync(tmp, content, 'utf-8');
+    fs.renameSync(tmp, fp);
+  } catch (e) { /* 写入失败时 localStorage 仍有副本 */ }
 });
 ipcMain.handle('get-data-dir', () => dataDir);
 ipcMain.handle('choose-data-dir', async (_e, currentContent) => {

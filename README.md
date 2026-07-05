@@ -21,7 +21,7 @@
 
 Windows 用户可以直接下载运行版：
 
-[下载 Windows 压缩包](https://github.com/jilmiy/jarvis-ai-calendar/releases/download/v1.1.0/jarvis-ai-calendar-v1.1.0-win-x64.zip)
+[下载 Windows 压缩包](https://github.com/jilmiy/jarvis-ai-calendar/releases/download/v1.1.1/jarvis-ai-calendar-v1.1.1-win-x64.zip)
 
 解压后双击 `贾维斯 AI 桌面日历.exe` 即可运行，不需要安装 Node.js。
 
@@ -35,6 +35,13 @@ Windows 用户可以直接下载运行版：
 - 倒计时纪念日：支持公历、农历和每年重复。
 - AI 助手：可配置 DeepSeek API Key，用于对话、写待办、生成周报。
 - 本地数据：数据保存在本机，支持自定义数据目录和备份导入导出。
+
+## v1.1.1 更新亮点
+
+- 优化靠边隐藏和弹出逻辑，多屏使用时更稳定。
+- 修复窗口停靠后容易遮挡其他软件的问题。
+- 增强 AI 聊天记录能力，支持加载往期记录和搜索跳转。
+- 优化若干界面细节和交互体验。
 
 ## 截图
 
